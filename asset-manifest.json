@@ -1,10 +1,10 @@
 {
   "files": {
-    "main.js": "/Money_Tracker/static/js/main.cad06d1a.js",
+    "main.js": "/Money_Tracker/static/js/main.7164d483.js",
     "index.html": "/Money_Tracker/index.html",
-    "main.cad06d1a.js.map": "/Money_Tracker/static/js/main.cad06d1a.js.map"
+    "main.7164d483.js.map": "/Money_Tracker/static/js/main.7164d483.js.map"
   },
   "entrypoints": [
-    "static/js/main.cad06d1a.js"
+    "static/js/main.7164d483.js"
   ]
 }
