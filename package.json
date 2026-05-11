@@ -1,7 +1,7 @@
 {
   "name": "money-tracker",
   "version": "1.0.0",
-  "homepage": "https://<your-username>.github.io/Money_Tracker",
+  "homepage": "https://savant6740.github.io/Money_Tracker",
   "dependencies": {
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
