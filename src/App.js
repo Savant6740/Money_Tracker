@@ -3,10 +3,11 @@ import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,700;1,400&family=Nunito:wght@400;500;600;700;800&display=swap";
 
 // ── SECURITY CONFIGURATION ────────────────────────────────────────────────────
-// These placeholders are replaced by GitHub Actions during deployment via sed.
-// Never commit real hashes here — always use the placeholders below.
-const PRAJAY_HASH = "__PRAJAY_PWD_HASH_PLACEHOLDER__";
-const VAISHALI_HASH = "__VAISHALI_PWD_HASH_PLACEHOLDER__";
+// Production: placeholders are replaced by GitHub Actions during deployment via sed.
+// Local dev:  set REACT_APP_PRAJAY_HASH and REACT_APP_VAISHALI_HASH in a .env file.
+//             Generate a SHA-256 hash with: echo -n "yourpassword" | sha256sum
+const PRAJAY_HASH   = process.env.REACT_APP_PRAJAY_HASH   || "__PRAJAY_PWD_HASH_PLACEHOLDER__";
+const VAISHALI_HASH = process.env.REACT_APP_VAISHALI_HASH || "__VAISHALI_PWD_HASH_PLACEHOLDER__";
 
 async function checkHash(input, expectedHash) {
   const msgBuffer = new TextEncoder().encode(input);
@@ -241,9 +242,9 @@ function PasswordScreen({user, onUnlock, th}){
     if (!pwd) return;
     setLoading(true);
     setErr("");
-    // Safety: if the placeholder was never replaced by CI, block access
+    // Safety: if the placeholder was never replaced by CI or .env, block access
     if (expectedHash.includes("PLACEHOLDER")) {
-      setErr("App not deployed correctly — secret not injected.");
+      setErr("Password not configured. Set REACT_APP_" + (user === "vaishali" ? "VAISHALI" : "PRAJAY") + "_HASH in your .env file (see README), or deploy via GitHub Actions.");
       setLoading(false);
       return;
     }
@@ -342,6 +343,14 @@ export default function App(){
   const [tab,setTab]=useState("home");
   const [quote]=useState(randQuote);
   const [nwVisible,setNwVisible]=useState(false);
+  // SpendingTab draft state lifted here so it survives tab switches
+  const [spendDraft,setSpendDraft]=useState({
+    salary:0,
+    month:new Date().toLocaleString("default",{month:"long"})+" "+new Date().getFullYear(),
+    target:50,
+    spend:mkSpend(),
+    note:"",
+  });
   const summary=useSummary(data);
   const th = user==="vaishali" ? (darkMode?VAISHALI_DARK:VAISHALI_LIGHT) : (darkMode?PRAJAY_DARK:PRAJAY_LIGHT);
   const TABS = user==="vaishali" ? V_TABS : P_TABS;
@@ -514,7 +523,7 @@ export default function App(){
         {tab==="home"&&<HomeTab summary={summary} th={th}/>}
         {tab==="assets"&&<AssetsTab data={data} upd={upd} updItem={updItem} addItem={addItem} delItem={delItem} summary={summary} th={th}/>}
         {tab==="liab"&&<LiabilitiesTab data={data} upd={upd} updItem={updItem} addItem={addItem} delItem={delItem} summary={summary} th={th}/>}
-        {tab==="spending"&&<SpendingTab data={data} upd={upd} setData={setData} th={th}/>}
+        {tab==="spending"&&<SpendingTab data={data} upd={upd} setData={setData} th={th} spendDraft={spendDraft} setSpendDraft={setSpendDraft}/>}
         {tab==="loans"&&<LoanPlanTab data={data} th={th}/>}
         {tab==="project"&&<ProjectionTab data={data} summary={summary} th={th}/>}
         {tab==="snapshot"&&<SnapshotTab data={data} summary={summary} th={th}/>}
@@ -672,7 +681,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <Sec title={th.isVaishali?"💵 Cash in Hand":"Cash in Hand"} th={th}>
         <F label="Cash Amount (₹)" type="number" value={data.cash} onChange={v=>upd("cash",+v)} placeholder="Enter cash amount" th={th}/>
-        <Cv>{fmtFull(+data.cash||0)}</Cv>
+        <Cv th={th}>{fmtFull(+data.cash||0)}</Cv>
       </Sec>
       <Sec title={th.isVaishali?"🏦 Bank Accounts":"Bank Accounts"} th={th}>
         {th.isVaishali&&<QStrip q="A woman with her own savings account is unstoppable. 💅" th={th}/>}
@@ -681,7 +690,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Bank Name" value={b.bankName} onChange={v=>updItem("banks",i,"bankName",v)} placeholder="e.g. HDFC, SBI" th={th}/>
             <F label="Account Number (last 4)" value={b.accNumber} onChange={v=>updItem("banks",i,"accNumber",v)} placeholder="XXXX1234" th={th}/>
             <F label="Balance (₹)" type="number" value={b.balance} onChange={v=>updItem("banks",i,"balance",+v)} placeholder="Balance" th={th}/>
-            <Cv>{fmtFull(+b.balance||0)}</Cv>
+            <Cv th={th}>{fmtFull(+b.balance||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("banks",{bankName:"",accNumber:"",balance:0})} th={th}/>
@@ -694,7 +703,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Principal (₹)" type="number" value={f.principal} onChange={v=>updItem("fds",i,"principal",+v)} placeholder="Principal amount" th={th}/>
             <F label="Interest Rate (% p.a.)" type="number" value={f.rate} onChange={v=>updItem("fds",i,"rate",+v)} placeholder="e.g. 7.5" th={th}/>
             <F label="Maturity Date" type="date" value={f.maturityDate} onChange={v=>updItem("fds",i,"maturityDate",v)} th={th}/>
-            <Cv>{fmtFull(+f.principal||0)}</Cv>
+            <Cv th={th}>{fmtFull(+f.principal||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("fds",{bankName:"",principal:0,rate:0,maturityDate:""})} th={th}/>
@@ -707,7 +716,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Monthly Amount (₹)" type="number" value={r.monthly} onChange={v=>updItem("rds",i,"monthly",+v)} placeholder="Monthly deposit" th={th}/>
             <F label="Total Deposited (₹)" type="number" value={r.totalDeposited} onChange={v=>updItem("rds",i,"totalDeposited",+v)} placeholder="Amount deposited so far" th={th}/>
             <F label="Current Value (₹)" type="number" value={r.currentValue} onChange={v=>updItem("rds",i,"currentValue",+v)} placeholder="Current value with interest" th={th}/>
-            <Cv>{fmtFull(+r.currentValue||0)}</Cv>
+            <Cv th={th}>{fmtFull(+r.currentValue||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("rds",{bankName:"",monthly:0,totalDeposited:0,currentValue:0})} th={th}/>
@@ -720,7 +729,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Fund Name" value={m.name} onChange={v=>updItem("mfs",i,"name",v)} placeholder="e.g. Axis Bluechip Fund" th={th}/>
             <F label="Invested Amount (₹)" type="number" value={m.invested} onChange={v=>updItem("mfs",i,"invested",+v)} placeholder="Amount invested" th={th}/>
             <F label="Growth Rate (% returns)" type="number" value={m.growthRate} onChange={v=>updItem("mfs",i,"growthRate",+v)} placeholder="e.g. 12" th={th}/>
-            <Cv>Current: {fmtFull(calcMFValue(m))}</Cv>
+            <Cv th={th}>Current: {fmtFull(calcMFValue(m))}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("mfs",{name:"",invested:0,growthRate:0})} th={th}/>
@@ -733,7 +742,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Company / Ticker" value={s.name} onChange={v=>updItem("stocks",i,"name",v)} placeholder="e.g. RELIANCE, TCS" th={th}/>
             <F label="Quantity (shares)" type="number" value={s.qty} onChange={v=>updItem("stocks",i,"qty",+v)} placeholder="No. of shares" th={th}/>
             <F label="Current Price (₹/share)" type="number" value={s.price} onChange={v=>updItem("stocks",i,"price",+v)} placeholder="Current market price" th={th}/>
-            <Cv>{fmtFull((+s.qty||0)*(+s.price||0))}</Cv>
+            <Cv th={th}>{fmtFull((+s.qty||0)*(+s.price||0))}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("stocks",{name:"",qty:0,price:0})} th={th}/>
@@ -746,7 +755,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Type" value={g.type} onChange={v=>updItem("gold",i,"type",v)} placeholder="Gold or Silver" th={th}/>
             <F label="Weight (grams)" type="number" value={g.grams} onChange={v=>updItem("gold",i,"grams",+v)} placeholder="Weight in grams" th={th}/>
             <F label="Price per gram (₹)" type="number" value={g.pricePerGram} onChange={v=>updItem("gold",i,"pricePerGram",+v)} placeholder="Current rate/gram" th={th}/>
-            <Cv>{fmtFull((+g.grams||0)*(+g.pricePerGram||0))}</Cv>
+            <Cv th={th}>{fmtFull((+g.grams||0)*(+g.pricePerGram||0))}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("gold",{type:"Gold",grams:0,pricePerGram:0})} th={th}/>
@@ -757,7 +766,7 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
           <Item key={r.id||i} title={`Property ${i+1}`} onDel={data.realestate.length>1?()=>delItem("realestate",i):null} th={th}>
             <F label="Description / Location" value={r.desc} onChange={v=>updItem("realestate",i,"desc",v)} placeholder="e.g. Flat in Pune" th={th}/>
             <F label="Current Market Value (₹)" type="number" value={r.currentValue} onChange={v=>updItem("realestate",i,"currentValue",+v)} placeholder="Current value" th={th}/>
-            <Cv>{fmtFull(+r.currentValue||0)}</Cv>
+            <Cv th={th}>{fmtFull(+r.currentValue||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("realestate",{desc:"",currentValue:0})} th={th}/>
@@ -808,7 +817,7 @@ function LiabilitiesTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Outstanding Balance (₹)" type="number" value={l.outstanding} onChange={v=>updItem("loans",i,"outstanding",+v)} placeholder="Remaining principal" th={th}/>
             <F label="Interest Rate (% p.a.)" type="number" value={l.rate} onChange={v=>updItem("loans",i,"rate",+v)} placeholder="e.g. 8.5" th={th}/>
             <F label="EMI per Month (₹)" type="number" value={l.emi} onChange={v=>updItem("loans",i,"emi",+v)} placeholder="Monthly EMI" th={th}/>
-            <Cv red>{fmtFull(+l.outstanding||0)}</Cv>
+            <Cv red th={th}>{fmtFull(+l.outstanding||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("loans",{name:"",type:"",outstanding:0,rate:0,emi:0})} th={th}/>
@@ -820,7 +829,7 @@ function LiabilitiesTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Bank / Card Name" value={c.bank} onChange={v=>updItem("creditCards",i,"bank",v)} placeholder="e.g. HDFC Regalia" th={th}/>
             <F label="Card Number (last 4)" value={c.cardNumber} onChange={v=>updItem("creditCards",i,"cardNumber",v)} placeholder="XXXX" th={th}/>
             <F label="Outstanding Amount (₹)" type="number" value={c.outstanding} onChange={v=>updItem("creditCards",i,"outstanding",+v)} placeholder="Current dues" th={th}/>
-            <Cv red>{fmtFull(+c.outstanding||0)}</Cv>
+            <Cv red th={th}>{fmtFull(+c.outstanding||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("creditCards",{bank:"",cardNumber:"",outstanding:0})} th={th}/>
@@ -833,11 +842,11 @@ function LiabilitiesTab({data,upd,updItem,addItem,delItem,summary,th}){
             <F label="Outstanding Amount (₹)" type="number" value={l.outstanding} onChange={v=>updItem("lazyPay",i,"outstanding",+v)} placeholder="Amount due on LazyPay" th={th}/>
             <F label="Due Date" type="date" value={l.dueDate} onChange={v=>updItem("lazyPay",i,"dueDate",v)} th={th}/>
             {l.dueDate&&(
-              <div style={{fontSize:11,color:new Date(l.dueDate)<new Date()?th.danger:"#d97706",marginTop:2,fontWeight:600}}>
-                {new Date(l.dueDate)<new Date()?"⚠️ Overdue!":"📅 Due: "+new Date(l.dueDate).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}
+              <div style={{fontSize:11,color:(()=>{const due=new Date(l.dueDate);const today=new Date();today.setHours(0,0,0,0);return due<today?th.danger:"#d97706";})(),marginTop:2,fontWeight:600}}>
+                {(()=>{const due=new Date(l.dueDate);const today=new Date();today.setHours(0,0,0,0);return due<today?"⚠️ Overdue!":"📅 Due: "+due.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"});})()}
               </div>
             )}
-            <Cv red>{fmtFull(+l.outstanding||0)}</Cv>
+            <Cv red th={th}>{fmtFull(+l.outstanding||0)}</Cv>
           </Item>
         ))}
         <Add onClick={()=>addItem("lazyPay",{outstanding:0,dueDate:""})} th={th}/>
@@ -859,15 +868,17 @@ function LiabilitiesTab({data,upd,updItem,addItem,delItem,summary,th}){
 }
 
 // ── SPENDING TAB ──────────────────────────────────────────────────────────────
-function SpendingTab({data,upd,setData,th}){
-  const [salary,setSalary]=useState(0);
-  const [month,setMonth]=useState(new Date().toLocaleString("default",{month:"long"})+" "+new Date().getFullYear());
-  const [target,setTarget]=useState(50);
-  const [spend,setSpend]=useState(mkSpend());
-  const [note,setNote]=useState("");
+function SpendingTab({data,upd,setData,th,spendDraft,setSpendDraft}){
+  const {salary,month,target,spend,note}=spendDraft;
+  const setSalary=v=>setSpendDraft(d=>({...d,salary:v}));
+  const setMonth=v=>setSpendDraft(d=>({...d,month:v}));
+  const setTarget=v=>setSpendDraft(d=>({...d,target:v}));
+  const setSpend=fn=>setSpendDraft(d=>({...d,spend:fn(d.spend)}));
+  const setNote=v=>setSpendDraft(d=>({...d,note:v}));
   const totalSpent=Object.values(spend).reduce((s,v)=>s+(+v||0),0);
-  const saved=Math.max(0,(+salary||0)-totalSpent);
-  const savedPct=salary>0?saved/salary*100:0;
+  const savedRaw=(+salary||0)-totalSpent;           // can be negative
+  const saved=Math.max(0,savedRaw);                 // clamped for display bars
+  const savedPct=salary>0?savedRaw/salary*100:0;    // true %, can be negative
   const spendPct=salary>0?totalSpent/salary*100:0;
   const tgt=+target||50;
   const onTrack=savedPct>=tgt;
@@ -894,7 +905,7 @@ function SpendingTab({data,upd,setData,th}){
   const saveMonth=()=>{
     if(!salary) return;
     setData(p=>({...p,spendHistory:[...(p.spendHistory||[]),{month,salary:+salary,spend:{...spend},totalSpent,saved,savedPct,note}]}));
-    setSpend(mkSpend()); setSalary(0); setNote("");
+    setSpendDraft({salary:0,month:new Date().toLocaleString("default",{month:"long"})+" "+new Date().getFullYear(),target:+target,spend:mkSpend(),note:""});
   };
 
   const INP={width:"100%",border:`1.5px solid ${th.border}`,borderRadius:10,padding:"8px 12px",fontSize:13,color:th.text,background:th.input,outline:"none",boxSizing:"border-box",fontFamily:th.font};
@@ -967,7 +978,7 @@ function SpendingTab({data,upd,setData,th}){
           <Sec title={th.isVaishali?"📋 This Month Summary":"This Month Summary"} th={th}>
             <table style={{width:"100%",borderCollapse:"collapse"}}>
               <tbody>
-                {[["Income",fmtFull(+salary||0),"#3b82f6"],["Total Spent",fmtFull(totalSpent),th.danger],["Amount Saved",fmtFull(saved),th.success],["Savings %",`${savedPct.toFixed(1)}%`,sc],["Target %",`${tgt}%`,th.accent],["Spending %",`${spendPct.toFixed(1)}%`,overspending?th.danger:"#d97706"]].map(([l,v,c])=>(
+                {[["Income",fmtFull(+salary||0),"#3b82f6"],["Total Spent",fmtFull(totalSpent),th.danger],["Amount Saved",(savedRaw<0?"−":"")+fmtFull(Math.abs(savedRaw)),savedRaw>=0?th.success:th.danger],["Savings %",`${savedPct.toFixed(1)}%`,sc],["Target %",`${tgt}%`,th.accent],["Spending %",`${spendPct.toFixed(1)}%`,overspending?th.danger:"#d97706"]].map(([l,v,c])=>(
                   <tr key={l}><td style={{padding:"7px 4px",fontSize:12,color:th.text,borderBottom:`1px solid ${th.border}`}}>{l}</td><td style={{padding:"7px 4px",fontSize:12,textAlign:"right",color:c,fontWeight:600,borderBottom:`1px solid ${th.border}`}}>{v}</td></tr>
                 ))}
               </tbody>
@@ -1016,25 +1027,32 @@ function LoanPlanTab({data,th}){
         let months=0;
         if(mr>0&&emi>outstanding*mr) months=Math.ceil(-Math.log(1-outstanding*mr/emi)/Math.log(1+mr));
         else if(mr===0&&emi>0) months=Math.ceil(outstanding/emi);
-        const totalPayable=emi*months,totalInterest=Math.max(0,totalPayable-outstanding);
+        else if(mr>0&&emi>0&&emi<=outstanding*mr) months=Infinity; // EMI doesn't cover interest
+        const isInfinite=!isFinite(months);
+        const totalPayable=isInfinite?0:emi*months,totalInterest=isInfinite?0:Math.max(0,totalPayable-outstanding);
         const extra=emi*1.2;
         let mFaster=0;
         if(mr>0&&extra>outstanding*mr) mFaster=Math.ceil(-Math.log(1-outstanding*mr/extra)/Math.log(1+mr));
         const intSaved=Math.max(0,totalInterest-(extra*mFaster-outstanding));
-        const done=new Date(); done.setMonth(done.getMonth()+months);
+        const done=new Date(); if(!isInfinite) done.setMonth(done.getMonth()+months);
         return (
           <Sec key={i} title={`${th.isVaishali?"🏛️ ":""}${l.name||`Loan ${i+1}`}${l.type?` — ${l.type}`:""}`} th={th}>
+            {isInfinite&&(
+              <div style={{background:th.isDark?"rgba(220,38,38,0.15)":"#fff1f2",border:`1.5px solid ${th.danger}`,borderRadius:12,padding:"10px 12px",marginBottom:10,fontSize:12,color:th.danger,fontWeight:600}}>
+                ⚠️ Your EMI (₹{emi.toLocaleString("en-IN")}) doesn't cover the monthly interest (₹{Math.round(outstanding*mr).toLocaleString("en-IN")}). The loan will never be paid off at this rate. Increase your EMI.
+              </div>
+            )}
             <div style={{display:"flex",gap:12,marginBottom:10}}>
               <svg width="72" height="72" viewBox="0 0 72 72">
                 <circle cx="36" cy="36" r="28" fill="none" stroke={th.isDark?"rgba(255,255,255,0.1)":"#fce7f3"} strokeWidth="7"/>
                 <circle cx="36" cy="36" r="28" fill="none" stroke={th.danger} strokeWidth="7" strokeDasharray="175.9 0" strokeLinecap="round" transform="rotate(-90 36 36)"/>
-                <text x="36" y="33" textAnchor="middle" fill={th.danger} fontSize="10" fontWeight="bold">{months}mo</text>
+                <text x="36" y="33" textAnchor="middle" fill={th.danger} fontSize="10" fontWeight="bold">{isInfinite?"∞":months+"mo"}</text>
                 <text x="36" y="44" textAnchor="middle" fill={th.textMuted} fontSize="7">left</text>
               </svg>
               <div>
                 <div style={{fontSize:12,color:th.danger,fontWeight:700}}>Outstanding: {fmtFull(outstanding)}</div>
                 <div style={{fontSize:11,color:th.text}}>Rate: {rate}% · EMI: {fmtFull(emi)}/mo</div>
-                <div style={{fontSize:11,color:th.textMuted}}>Done: {done.toLocaleDateString("en-IN",{month:"long",year:"numeric"})}</div>
+                <div style={{fontSize:11,color:th.textMuted}}>Done: {isInfinite?"Never (increase EMI)":done.toLocaleDateString("en-IN",{month:"long",year:"numeric"})}</div>
                 <div style={{fontSize:11,color:th.danger}}>Total Interest: {fmtFull(totalInterest)}</div>
               </div>
             </div>
@@ -1129,9 +1147,17 @@ Return ONLY a JSON array of exactly 6 objects, each with:
 
 No preamble, no markdown, just the JSON array.`;
 
+      // NOTE: Calling the Anthropic API directly from the browser requires an API key.
+      // Set REACT_APP_ANTHROPIC_API_KEY in your .env file for local dev.
+      // For production, route through a backend proxy to avoid exposing the key.
       const response=await fetch("https://api.anthropic.com/v1/messages",{
         method:"POST",
-        headers:{"Content-Type":"application/json"},
+        headers:{
+          "Content-Type":"application/json",
+          "x-api-key": process.env.REACT_APP_ANTHROPIC_API_KEY || "",
+          "anthropic-version": "2023-06-01",
+          "anthropic-dangerous-direct-browser-access": "true",
+        },
         body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1000,messages:[{role:"user",content:prompt}]})
       });
       const result=await response.json();
@@ -1380,7 +1406,7 @@ function QStrip({q,th}){
   return <div style={{background:th.isDark&&th.isVaishali?"linear-gradient(90deg,#2a1020,#3b1632)":th.stripBg,borderRadius:10,padding:"7px 12px",fontSize:11,color:th.isDark&&th.isVaishali?"#c490a8":th.accentL,fontStyle:"italic",marginBottom:8,borderLeft:`3px solid ${th.isDark&&th.isVaishali?"#e91e8c":th.accentL}`}}>🌸 {q}</div>;
 }
 
-function Cv({children,red}){return <div style={{fontSize:11,color:red?"#f87171":"inherit",marginTop:2,textAlign:"right",fontWeight:600}}>{children}</div>;}
+function Cv({children,red,th}){return <div style={{fontSize:11,color:red?(th?.danger||"#f87171"):(th?.text||"inherit"),marginTop:2,textAlign:"right",fontWeight:600}}>{children}</div>;}
 
 function Total({children,red,th}){
   return <div style={{fontSize:12,color:red?th.danger:(th.isDark&&th.isVaishali?"#c490a8":th.accentL),textAlign:"right",marginTop:6,fontWeight:700}}>Total: {children}</div>;
