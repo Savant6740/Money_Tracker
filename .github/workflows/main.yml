@@ -2,7 +2,7 @@ name: Deploy React App to GitHub Pages
 
 on:
   push:
-    branches: [ main ] # or 'master', depending on your default branch
+    branches: [ main ]
 
 permissions:
   contents: write
@@ -14,10 +14,10 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v3
 
-      - name: Inject Password Secret
-        # This searches your App.js file for the placeholder and swaps it with your secret hash
+      - name: Inject Password Secrets
         run: |
           sed -i "s/__PRAJAY_PWD_HASH_PLACEHOLDER__/${{ secrets.PRAJAY_PWD_HASH }}/g" src/App.js
+          sed -i "s/__VAISHALI_PWD_HASH_PLACEHOLDER__/${{ secrets.VAISHALI_PWD_HASH }}/g" src/App.js
 
       - name: Setup Node.js
         uses: actions/setup-node@v3
@@ -33,5 +33,5 @@ jobs:
       - name: Deploy to GitHub Pages
         uses: JamesIves/github-pages-deploy-action@v4
         with:
-          folder: build # This is where React outputs the production build
+          folder: build
           branch: gh-pages
