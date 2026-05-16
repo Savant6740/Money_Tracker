@@ -48,6 +48,7 @@ const SPEND_CATS = [
   {key:"gadgets",label:"Gadgets & Tech",emoji:"📱",col:"#2563eb"},
   {key:"subscriptions",label:"Subscriptions",emoji:"📺",col:"#0891b2"},
   {key:"home",label:"Home & Decor",emoji:"🕯️",col:"#d97706"},
+  {key:"emisloan",label:"EMIs & Loans",emoji:"🏦",col:"#ef4444"},
   {key:"other",label:"Other",emoji:"✨",col:"#6b7280"},
 ];
 
@@ -73,9 +74,11 @@ const INIT = {
   stocks:[], gold:[{id:1,type:"Gold",grams:0,pricePerGram:0}],
   realestate:[{id:1,desc:"",currentValue:0}],
   pf:[{id:1,pfNumber:"",empContrib:0,emplrContrib:0,months:0,existingCorpus:0}],
+  debtors:[{id:1,name:"",amount:0,dueDate:"",note:""}],
   loans:[{id:1,name:"",type:"",outstanding:0,rate:0,emi:0}],
   creditCards:[{id:1,bank:"",cardNumber:"",outstanding:0}],
   lazyPay:[{id:1,outstanding:0,dueDate:""}],
+  creditors:[{id:1,name:"",amount:0,dueDate:"",note:""}],
   salary:0, spendHistory:[],
   expenses:[], budgets:mkBudgets(), monthlyIncomes:[],
 };
@@ -101,11 +104,13 @@ function useSummary(data){
     const cash=+data.cash||0;
     const advances=(data.expenses||[]).filter(e=>e.type==="advance");
     const advanceTotal=advances.reduce((s,a)=>s+(+a.amount||0),0);
-    const totalAssets=cash+bankTotal+fdTotal+rdTotal+mfTotal+stockTotal+goldTotal+reTotal+pfTotal+advanceTotal;
+    const debtorTotal=(data.debtors||[]).reduce((s,d)=>s+(+d.amount||0),0);
+    const totalAssets=cash+bankTotal+fdTotal+rdTotal+mfTotal+stockTotal+goldTotal+reTotal+pfTotal+advanceTotal+debtorTotal;
     const loanTotal=data.loans.reduce((s,l)=>s+(+l.outstanding||0),0);
     const ccTotal=data.creditCards.reduce((s,c)=>s+(+c.outstanding||0),0);
     const lazyPayTotal=(data.lazyPay||[]).reduce((s,l)=>s+(+l.outstanding||0),0);
-    const totalLiabilities=loanTotal+ccTotal+lazyPayTotal;
+    const creditorTotal=(data.creditors||[]).reduce((s,c)=>s+(+c.amount||0),0);
+    const totalLiabilities=loanTotal+ccTotal+lazyPayTotal+creditorTotal;
     const netWorth=totalAssets-totalLiabilities;
     const liquidCash=cash+bankTotal;
     const lockedInvestments=fdTotal+rdTotal+mfTotal+stockTotal+goldTotal+reTotal+pfTotal;
@@ -113,7 +118,7 @@ function useSummary(data){
     const monthlyEMI=data.loans.reduce((s,l)=>s+(+l.emi||0),0);
     return {bankTotal,fdTotal,rdTotal,mfTotal,stockTotal,goldTotal,reTotal,pfTotal,cash,
       totalAssets,loanTotal,ccTotal,lazyPayTotal,totalLiabilities,netWorth,liquidCash,
-      lockedInvestments,freeCash,monthlyEMI,advanceTotal};
+      lockedInvestments,freeCash,monthlyEMI,advanceTotal,debtorTotal,creditorTotal};
   },[data]);
 }
 
@@ -384,16 +389,16 @@ export default function App(){
           </div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:14}}>
             {[
-              {icon:"💧",l:"Liquid",s:"Cash + Bank",v:summary.liquidCash,c:"#3b82f6"},
-              {icon:"⚡",l:"Free Cash",s:"After dues",v:summary.freeCash,c:summary.freeCash>=0?"#4ade80":"#ff6b6b"},
-              {icon:"📈",l:"Investments",s:"Locked assets",v:summary.lockedInvestments,c:"#a78bfa"},
+              {icon:"💧",l:"Liquid",s:`Cash (${fmt(summary.cash)}) + Bank (${fmt(summary.bankTotal)})`,v:summary.liquidCash,c:"#3b82f6"},
+              {icon:"⚡",l:"Free Cash",s:`Liquid − CC (${fmt(summary.ccTotal)}) − LP (${fmt(summary.lazyPayTotal||0)})`,v:summary.freeCash,c:summary.freeCash>=0?"#4ade80":"#ff6b6b"},
+              {icon:"📈",l:"Investments",s:`FD+RD+MF+Stocks+Gold+RE+PF`,v:summary.lockedInvestments,c:"#a78bfa"},
               {icon:"🏦",l:"Bank Balance",s:"Across accounts",v:summary.bankTotal,c:"#38bdf8"},
             ].map(({icon,l,s,v,c})=>(
               <div key={l} className="pcard" style={{background:th.cardBg,borderRadius:14,padding:"14px",border:`1px solid ${th.border}`}}>
                 <div style={{fontSize:16,marginBottom:6}}>{icon}</div>
                 <div style={{fontSize:20,fontWeight:700,color:th.text,letterSpacing:-.5,fontFamily:"'DM Sans',sans-serif"}}>{fmt(v)}</div>
                 <div style={{fontSize:11,fontWeight:600,color:th.text,marginTop:2}}>{l}</div>
-                <div style={{fontSize:9,color:th.textMuted,fontFamily:"'DM Mono',monospace"}}>{s}</div>
+                <div style={{fontSize:8,color:th.textMuted,fontFamily:"'DM Mono',monospace",marginTop:2,lineHeight:1.4}}>{s}</div>
               </div>
             ))}
           </div>
@@ -485,6 +490,7 @@ export default function App(){
 
 // ── HOME TAB – VAISHALI ───────────────────────────────────────────────────────
 function HomeTabVaishali({summary,data,th}){
+  const [showCalc,setShowCalc]=useState(false);
   const assetRows=[
     {label:"Cash",val:summary.cash,col:"#22c55e"},
     {label:"Bank Accounts",val:summary.bankTotal,col:"#3b82f6"},
@@ -495,6 +501,7 @@ function HomeTabVaishali({summary,data,th}){
     {label:"Gold & Silver",val:summary.goldTotal,col:"#eab308"},
     {label:"Real Estate",val:summary.reTotal,col:"#f97316"},
     {label:"Provident Fund",val:summary.pfTotal,col:"#10b981"},
+    ...(summary.debtorTotal>0?[{label:"Debtors (Receivable)",val:summary.debtorTotal,col:"#06b6d4"}]:[]),
   ].filter(r=>r.val>0);
   const ratio=summary.totalAssets>0?summary.totalLiabilities/summary.totalAssets:0;
   const score=Math.max(0,Math.min(100,Math.round((1-ratio)*100)));
@@ -530,6 +537,27 @@ function HomeTabVaishali({summary,data,th}){
           <div style={{fontSize:10,color:th.textMuted,marginBottom:4,textTransform:"uppercase",letterSpacing:2}}>Net (Assets − Liabilities)</div>
           <div style={{fontSize:22,fontWeight:700,color:netDiff>=0?th.success:th.danger,fontFamily:th.serif}}>{netDiff<0?"−":""}{fmtFull(Math.abs(netDiff))}</div>
         </div>
+        <button onClick={()=>setShowCalc(v=>!v)} style={{marginTop:10,width:"100%",padding:"8px",background:"transparent",border:`1.5px dashed ${th.isDark?"#6b3a52":th.accentL}`,borderRadius:10,cursor:"pointer",fontSize:11,fontWeight:700,color:th.isDark?"#c490a8":th.accentL,fontFamily:th.font}}>
+          {showCalc?"▲ Hide Calculations":"▼ How are these calculated?"}
+        </button>
+        {showCalc&&(
+          <div className="fi" style={{marginTop:8,background:th.isDark?"rgba(255,255,255,0.03)":th.bg,borderRadius:10,padding:12,border:`1px solid ${th.border}`}}>
+            <div style={{fontSize:11,fontWeight:700,color:th.isDark?"#c490a8":th.accentL,marginBottom:8,fontFamily:th.serif}}>📐 How Your Numbers Are Calculated</div>
+            {[
+              {label:"💧 Liquid Cash",formula:`Cash in Hand (${fmtFull(summary.cash)}) + All Bank Balances (${fmtFull(summary.bankTotal)})`,result:fmtFull(summary.liquidCash)},
+              {label:"🌸 Free Cash",formula:`Liquid Cash (${fmtFull(summary.liquidCash)}) − Credit Card Dues (${fmtFull(summary.ccTotal)}) − LazyPay (${fmtFull(summary.lazyPayTotal)})`,result:fmtFull(summary.freeCash)},
+              {label:"🔒 Locked Investments",formula:`FDs (${fmtFull(summary.fdTotal)}) + RDs (${fmtFull(summary.rdTotal)}) + Mutual Funds (${fmtFull(summary.mfTotal)}) + Stocks (${fmtFull(summary.stockTotal)}) + Gold (${fmtFull(summary.goldTotal)}) + Real Estate (${fmtFull(summary.reTotal)}) + PF (${fmtFull(summary.pfTotal)})`,result:fmtFull(summary.lockedInvestments)},
+              {label:"📊 Total Assets",formula:`Cash + Banks + FDs + RDs + MFs + Stocks + Gold + Real Estate + PF${summary.debtorTotal>0?` + Debtors (${fmtFull(summary.debtorTotal)})`:""} = ${fmtFull(summary.totalAssets)}`,result:fmtFull(summary.totalAssets)},
+              {label:"💳 Total Liabilities",formula:`Loans (${fmtFull(summary.loanTotal)}) + Credit Cards (${fmtFull(summary.ccTotal)}) + LazyPay (${fmtFull(summary.lazyPayTotal)})${summary.creditorTotal>0?` + Creditors (${fmtFull(summary.creditorTotal)})":""}`,result:fmtFull(summary.totalLiabilities)},
+            ].map(({label,formula,result})=>(
+              <div key={label} style={{marginBottom:10,paddingBottom:10,borderBottom:`1px solid ${th.border}`}}>
+                <div style={{fontSize:11,fontWeight:700,color:th.text,marginBottom:3}}>{label}</div>
+                <div style={{fontSize:10,color:th.textMuted,lineHeight:1.6,marginBottom:3}}>{formula}</div>
+                <div style={{fontSize:12,fontWeight:700,color:th.success,fontFamily:th.serif}}>= {result}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </Sec>
       <Sec title="💰 Asset Breakdown" th={th}>
         {assetRows.length===0?<Empty text="Add assets to see your breakdown 💐" th={th}/>:(
@@ -846,6 +874,136 @@ function AssetsTab({data,upd,updItem,addItem,delItem,summary,th}){
         })}
         <Add onClick={()=>addItem("pf",{pfNumber:"",empContrib:0,emplrContrib:0,months:0,existingCorpus:0})} th={th}/>
         <Total th={th}>{fmtFull(summary.pfTotal)}</Total>
+      </Sec>
+      <Sec title="🤝 Debtors (Money Owed to You)" th={th}>
+        <QStrip q="Track what others owe you — every rupee counts. 💐" th={th}/>
+        {(data.debtors||[]).map((d,i)=>(
+          <Item key={d.id||i} title={d.name?`Debtor — ${d.name}`:`Debtor ${i+1}`} onDel={(data.debtors||[]).length>1?()=>delItem("debtors",i):null} th={th}>
+            <F label="Name / Description" value={d.name} onChange={v=>updItem("debtors",i,"name",v)} placeholder="Who owes you?" th={th}/>
+            <F label="Amount (₹)" type="number" value={d.amount} onChange={v=>updItem("debtors",i,"amount",+v)} placeholder="Amount receivable" th={th}/>
+            <F label="Expected Date" type="date" value={d.dueDate} onChange={v=>updItem("debtors",i,"dueDate",v)} th={th}/>
+            <F label="Note" value={d.note} onChange={v=>updItem("debtors",i,"note",v)} placeholder="Reason / details" th={th}/>
+            {d.dueDate&&(()=>{const due=new Date(d.dueDate);const today=new Date();today.setHours(0,0,0,0);const overdue=due<today;return <div style={{fontSize:11,color:overdue?th.danger:"#d97706",marginTop:2,fontWeight:600}}>{overdue?"⚠️ Overdue!":"📅 Due: "+due.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>;})()}
+            <Cv th={th}>{fmtFull(+d.amount||0)}</Cv>
+          </Item>
+        ))}
+        <Add onClick={()=>addItem("debtors",{name:"",amount:0,dueDate:"",note:""})} th={th}/>
+        <Total th={th}>{fmtFull(summary.debtorTotal)}</Total>
+      </Sec>
+
+      {/* ── ASSET CALCULATION BREAKDOWN ── */}
+      <Sec title="📐 Asset Category Breakdown & Calculations" th={th}>
+        <QStrip q="Know exactly where your wealth stands — every category counts. 👑" th={th}/>
+        {[
+          {
+            cat:"💵 Cash in Hand",
+            total:summary.cash,
+            col:"#22c55e",
+            lines:[`Cash Amount entered: ${fmtFull(summary.cash)}`],
+            formula:`Total = ${fmtFull(summary.cash)}`
+          },
+          {
+            cat:"🏦 Bank Accounts",
+            total:summary.bankTotal,
+            col:"#3b82f6",
+            lines:data.banks.filter(b=>+b.balance>0).map((b,i)=>`${b.bankName||`Bank ${i+1}`}${b.accNumber?` (****${b.accNumber})`:""}  →  ${fmtFull(+b.balance)}`),
+            formula:`Total = ${data.banks.filter(b=>+b.balance>0).map(b=>fmtFull(+b.balance)).join(" + ") || "₹0"} = ${fmtFull(summary.bankTotal)}`
+          },
+          {
+            cat:"🔒 Fixed Deposits",
+            total:summary.fdTotal,
+            col:"#06b6d4",
+            lines:data.fds.filter(f=>+f.principal>0).map((f,i)=>`${f.bankName||`FD ${i+1}`}  →  Principal: ${fmtFull(+f.principal)}${+f.rate>0?`  @${f.rate}%`:""}${f.maturityDate?`  (Matures: ${new Date(f.maturityDate).toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})})`:""}`) ,
+            formula:`Total Principal = ${data.fds.filter(f=>+f.principal>0).map(f=>fmtFull(+f.principal)).join(" + ") || "₹0"} = ${fmtFull(summary.fdTotal)}`
+          },
+          {
+            cat:"🔄 Recurring Deposits",
+            total:summary.rdTotal,
+            col:"#14b8a6",
+            lines:data.rds.filter(r=>+r.currentValue>0).map((r,i)=>`${r.bankName||`RD ${i+1}`}  →  Deposited: ${fmtFull(+r.totalDeposited||0)}  |  Current Value: ${fmtFull(+r.currentValue)}`),
+            formula:`Total Current Value = ${data.rds.filter(r=>+r.currentValue>0).map(r=>fmtFull(+r.currentValue)).join(" + ") || "₹0"} = ${fmtFull(summary.rdTotal)}`
+          },
+          {
+            cat:"📊 Mutual Funds",
+            total:summary.mfTotal,
+            col:"#8b5cf6",
+            lines:data.mfs.filter(m=>+m.invested>0).map((m,i)=>`${m.name||`MF ${i+1}`}  →  Invested: ${fmtFull(+m.invested)}${+m.growthRate>0?`  ×(1+${m.growthRate}%) = ${fmtFull(calcMFValue(m))}`:`  = ${fmtFull(calcMFValue(m))}`}`),
+            formula:`Total Current Value = ${data.mfs.filter(m=>+m.invested>0).map(m=>fmtFull(calcMFValue(m))).join(" + ") || "₹0"} = ${fmtFull(summary.mfTotal)}`
+          },
+          {
+            cat:"📈 Stocks & Equity",
+            total:summary.stockTotal,
+            col:"#f59e0b",
+            lines:data.stocks.filter(s=>(+s.qty||0)*(+s.price||0)>0).map((s,i)=>`${s.name||`Stock ${i+1}`}  →  ${s.qty} shares × ₹${(+s.price||0).toLocaleString("en-IN")} = ${fmtFull((+s.qty||0)*(+s.price||0))}`),
+            formula:`Total = ${data.stocks.filter(s=>(+s.qty||0)*(+s.price||0)>0).map(s=>fmtFull((+s.qty||0)*(+s.price||0))).join(" + ") || "₹0"} = ${fmtFull(summary.stockTotal)}`
+          },
+          {
+            cat:"🥇 Gold & Silver",
+            total:summary.goldTotal,
+            col:"#eab308",
+            lines:data.gold.filter(g=>(+g.grams||0)*(+g.pricePerGram||0)>0).map((g,i)=>`${g.type||"Gold"} ${i+1}  →  ${g.grams}g × ₹${(+g.pricePerGram||0).toLocaleString("en-IN")}/g = ${fmtFull((+g.grams||0)*(+g.pricePerGram||0))}`),
+            formula:`Total = ${data.gold.filter(g=>(+g.grams||0)*(+g.pricePerGram||0)>0).map(g=>fmtFull((+g.grams||0)*(+g.pricePerGram||0))).join(" + ") || "₹0"} = ${fmtFull(summary.goldTotal)}`
+          },
+          {
+            cat:"🏠 Real Estate",
+            total:summary.reTotal,
+            col:"#f97316",
+            lines:data.realestate.filter(r=>+r.currentValue>0).map((r,i)=>`${r.desc||`Property ${i+1}`}  →  ${fmtFull(+r.currentValue)}`),
+            formula:`Total = ${data.realestate.filter(r=>+r.currentValue>0).map(r=>fmtFull(+r.currentValue)).join(" + ") || "₹0"} = ${fmtFull(summary.reTotal)}`
+          },
+          ...data.pf.filter(p=>(+p.empContrib>0||+p.emplrContrib>0||+p.existingCorpus>0)).map((p,i)=>{
+            const monthly=(+p.empContrib||0)+(+p.emplrContrib||0);
+            const n=+p.months||0;
+            const existing=+p.existingCorpus||0;
+            const rate=0.0815/12;
+            const corpus=calcPFCorpus(p,n);
+            const growthFactor=n>0?Math.pow(1+rate,n):1;
+            return {
+              cat:`🏛️ Provident Fund${data.pf.length>1?` ${i+1}`:""}${p.pfNumber?` (${p.pfNumber})`:""}`,
+              total:corpus,
+              col:"#10b981",
+              lines:[
+                `Existing Corpus: ${fmtFull(existing)}`,
+                `Employee Contribution/month: ${fmtFull(+p.empContrib||0)}`,
+                `Employer Contribution/month: ${fmtFull(+p.emplrContrib||0)}`,
+                `Total Monthly Addition: ${fmtFull(monthly)}`,
+                `Projection Period: ${n} months`,
+                `Interest Rate: 8.15% p.a. (0.6792% per month)`,
+                n>0?`Formula: Existing (${fmtFull(existing)}) × (1+0.006792)^${n} + Monthly (${fmtFull(monthly)}) × [(1+0.006792)^${n} − 1] / 0.006792`:`Formula: Existing Corpus only (no projection months set)`,
+                n>0?`= ${fmtFull(Math.round(existing*growthFactor))} + ${fmtFull(Math.round(monthly*((growthFactor-1)/rate)))}`:""
+              ].filter(Boolean),
+              formula:`PF Corpus = ${fmtFull(corpus)}`
+            };
+          }),
+          ...(summary.debtorTotal>0?[{
+            cat:"🤝 Debtors (Receivable)",
+            total:summary.debtorTotal,
+            col:"#06b6d4",
+            lines:(data.debtors||[]).filter(d=>+d.amount>0).map((d,i)=>`${d.name||`Debtor ${i+1}`}  →  ${fmtFull(+d.amount)}`),
+            formula:`Total Receivable = ${(data.debtors||[]).filter(d=>+d.amount>0).map(d=>fmtFull(+d.amount)).join(" + ") || "₹0"} = ${fmtFull(summary.debtorTotal)}`
+          }]:[]),
+        ].map(({cat,total,col,lines,formula})=>(
+          <div key={cat} style={{background:th.isDark?"rgba(255,255,255,0.03)":th.bg,borderRadius:12,padding:12,marginBottom:10,border:`1.5px solid ${th.border}`}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+              <div style={{fontFamily:th.serif,fontSize:12,fontWeight:700,color:th.isDark?"#c490a8":th.accentL}}>{cat}</div>
+              <div style={{fontSize:14,fontWeight:700,color:col,fontFamily:th.serif}}>{fmtFull(total)}</div>
+            </div>
+            {lines.map((l,i)=>(
+              <div key={i} style={{fontSize:10,color:th.textMuted,padding:"2px 0",paddingLeft:8,borderLeft:`2px solid ${col}33`}}>{l}</div>
+            ))}
+            <div style={{marginTop:8,paddingTop:6,borderTop:`1px dashed ${th.border}`,fontSize:11,fontWeight:700,color:col}}>{formula}</div>
+          </div>
+        ))}
+        <div style={{background:th.isDark?"rgba(16,185,129,0.08)":"#f0fdf4",borderRadius:12,padding:12,border:`1.5px solid ${th.isDark?"#064e3b":"#bbf7d0"}`,marginTop:6}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:4}}>
+            <div style={{fontSize:12,fontWeight:700,color:th.success,fontFamily:th.serif}}>💰 GRAND TOTAL ASSETS</div>
+            <div style={{fontSize:16,fontWeight:700,color:th.success,fontFamily:th.serif}}>{fmtFull(summary.totalAssets)}</div>
+          </div>
+          <div style={{fontSize:10,color:th.textMuted,lineHeight:1.8}}>
+            Cash ({fmtFull(summary.cash)}) + Banks ({fmtFull(summary.bankTotal)}) + FDs ({fmtFull(summary.fdTotal)}) + RDs ({fmtFull(summary.rdTotal)}) + MFs ({fmtFull(summary.mfTotal)}) + Stocks ({fmtFull(summary.stockTotal)}) + Gold ({fmtFull(summary.goldTotal)}) + Real Estate ({fmtFull(summary.reTotal)}) + PF ({fmtFull(summary.pfTotal)}){summary.debtorTotal>0?` + Debtors (${fmtFull(summary.debtorTotal)})`:""}
+          </div>
+          <div style={{marginTop:4,fontSize:12,fontWeight:700,color:th.success,fontFamily:th.serif}}>= {fmtFull(summary.totalAssets)}</div>
+        </div>
       </Sec>
     </div>
   );
@@ -1689,16 +1847,34 @@ function LiabilitiesTab({data,upd,updItem,addItem,delItem,summary,th}){
           <div style={{marginTop:8,fontSize:11,color:th.textMuted}}>Monthly EMI: <b style={{color:"#f97316",fontFamily:"'DM Mono',monospace"}}>{fmtFull(summary.monthlyEMI)}</b></div>
         </div>
       ):(
+        <>
+        <Sec title="🧾 Creditors (Money You Owe Informally)" th={th}>
+          <QStrip q="Track what you owe others — clear debts bring clarity. 💪" th={th}/>
+          {(data.creditors||[]).map((c,i)=>(
+            <Item key={c.id||i} title={c.name?`Creditor — ${c.name}`:`Creditor ${i+1}`} onDel={(data.creditors||[]).length>1?()=>delItem("creditors",i):null} th={th}>
+              <F label="Name / Description" value={c.name} onChange={v=>updItem("creditors",i,"name",v)} placeholder="To whom do you owe?" th={th}/>
+              <F label="Amount (₹)" type="number" value={c.amount} onChange={v=>updItem("creditors",i,"amount",+v)} placeholder="Amount owed" th={th}/>
+              <F label="Due Date" type="date" value={c.dueDate} onChange={v=>updItem("creditors",i,"dueDate",v)} th={th}/>
+              <F label="Note" value={c.note} onChange={v=>updItem("creditors",i,"note",v)} placeholder="Reason / details" th={th}/>
+              {c.dueDate&&(()=>{const due=new Date(c.dueDate);const today=new Date();today.setHours(0,0,0,0);return <div style={{fontSize:11,color:due<today?th.danger:"#d97706",marginTop:2,fontWeight:600}}>{due<today?"⚠️ Overdue!":"📅 Due: "+due.toLocaleDateString("en-IN",{day:"numeric",month:"short",year:"numeric"})}</div>;})()}
+              <Cv red th={th}>{fmtFull(+c.amount||0)}</Cv>
+            </Item>
+          ))}
+          <Add onClick={()=>addItem("creditors",{name:"",amount:0,dueDate:"",note:""})} th={th}/>
+          <Total red th={th}>{fmtFull(summary.creditorTotal||0)}</Total>
+        </Sec>
         <div style={{background:th.cardBg,border:`2px solid ${th.border}`,borderRadius:16,padding:16,textAlign:"center"}}>
           <div style={{fontSize:11,color:th.textMuted,marginBottom:2}}>Total Liabilities</div>
           <div style={{fontFamily:th.serif,fontSize:26,fontWeight:700,color:th.danger}}>{fmtFull(summary.totalLiabilities)}</div>
-          <div style={{display:"flex",justifyContent:"center",gap:16,marginTop:8,fontSize:11,color:th.textMuted}}>
+          <div style={{display:"flex",justifyContent:"center",gap:16,marginTop:8,fontSize:11,color:th.textMuted,flexWrap:"wrap"}}>
             <span>Loans: <b style={{color:th.danger}}>{fmtFull(summary.loanTotal)}</b></span>
             <span>CC: <b style={{color:th.danger}}>{fmtFull(summary.ccTotal)}</b></span>
+            {(summary.creditorTotal||0)>0&&<span>Creditors: <b style={{color:th.danger}}>{fmtFull(summary.creditorTotal)}</b></span>}
           </div>
           <div style={{fontSize:11,color:th.textMuted,marginTop:8}}>Monthly EMI Burden</div>
           <div style={{fontFamily:th.serif,fontSize:18,fontWeight:700,color:"#f97316"}}>{fmtFull(summary.monthlyEMI)}/month</div>
         </div>
+        </>
       )}
     </div>
   );
@@ -1711,61 +1887,218 @@ function LoanPlanTab({data,th}){
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <QStrip q="Debt is temporary. Financial freedom is forever. 🌸" th={th}/>
       {loans.length===0&&<Empty text="Add loan details in the Debts tab first 💐" th={th}/>}
-      {loans.map((l,i)=>{
-        const outstanding=+l.outstanding||0,emi=+l.emi||0,rate=+l.rate||0,mr=rate/100/12;
-        let months=0;
-        if(mr>0&&emi>outstanding*mr) months=Math.ceil(-Math.log(1-outstanding*mr/emi)/Math.log(1+mr));
-        else if(mr===0&&emi>0) months=Math.ceil(outstanding/emi);
-        else if(mr>0&&emi>0&&emi<=outstanding*mr) months=Infinity;
-        const isInfinite=!isFinite(months);
-        const totalPayable=isInfinite?0:emi*months,totalInterest=isInfinite?0:Math.max(0,totalPayable-outstanding);
-        const extra=emi*1.2;
-        let mFaster=0;
-        if(mr>0&&extra>outstanding*mr) mFaster=Math.ceil(-Math.log(1-outstanding*mr/extra)/Math.log(1+mr));
-        const intSaved=Math.max(0,totalInterest-(extra*mFaster-outstanding));
-        const done=new Date(); if(!isInfinite) done.setMonth(done.getMonth()+months);
-        return (
-          <Sec key={i} title={`🏛️ ${l.name||`Loan ${i+1}`}${l.type?` — ${l.type}`:""}`} th={th}>
-            {isInfinite&&(
-              <div style={{background:th.isDark?"rgba(220,38,38,0.15)":"#fff1f2",border:`1.5px solid ${th.danger}`,borderRadius:12,padding:"10px 12px",marginBottom:10,fontSize:12,color:th.danger,fontWeight:600}}>
-                ⚠️ EMI doesn't cover monthly interest. Increase your EMI.
-              </div>
-            )}
-            <div style={{marginBottom:10}}>
-              <div style={{fontSize:12,color:th.danger,fontWeight:700}}>Outstanding: {fmtFull(outstanding)}</div>
-              <div style={{fontSize:11,color:th.text}}>Rate: {rate}% · EMI: {fmtFull(emi)}/mo</div>
-              <div style={{fontSize:11,color:th.textMuted}}>Done: {isInfinite?"Never":done.toLocaleDateString("en-IN",{month:"long",year:"numeric"})}</div>
-              <div style={{fontSize:11,color:th.danger}}>Total Interest: {fmtFull(totalInterest)}</div>
-            </div>
-            {months>0&&(
-              <div style={{marginBottom:10}}>
-                {[3,6,12,24].filter(m=>m<months).map(m=>{
-                  const mr2=rate/100/12;
-                  const nwBal=outstanding*Math.pow(1+mr2,m)-emi*((Math.pow(1+mr2,m)-1)/mr2);
-                  return (
-                    <div key={m} style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0",borderBottom:`1px solid ${th.border}`}}>
-                      <span style={{color:th.text}}>After {m} months</span>
-                      <span style={{color:th.danger,fontWeight:600}}>{fmtFull(Math.max(0,nwBal))} left</span>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-            <div style={{background:th.isDark?"rgba(16,185,129,0.1)":"#f0fdf4",borderRadius:12,padding:12,border:`1px solid ${th.isDark?"#064e3b":"#bbf7d0"}`}}>
-              <div style={{fontWeight:700,color:th.success,fontSize:12,marginBottom:6}}>Pay 20% Extra → Save More</div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:11,padding:"3px 0"}}>
-                <span style={{color:th.isDark?"#6ee7b7":"#166534"}}>Extra EMI: {fmtFull(extra)}/mo</span>
-                <span style={{color:th.success,fontWeight:700}}>{months-mFaster>0?`${months-mFaster} months faster`:""}</span>
-              </div>
-              <div style={{display:"flex",justifyContent:"space-between",fontSize:11}}>
-                <span style={{color:th.isDark?"#6ee7b7":"#166534"}}>Interest Saved</span>
-                <span style={{color:th.success,fontWeight:700}}>{fmtFull(intSaved)}</span>
-              </div>
-            </div>
-          </Sec>
-        );
-      })}
+      {loans.map((l,i)=><VaishaliLoanCard key={i} loan={l} index={i} th={th}/>)}
     </div>
+  );
+}
+function VaishaliLoanCard({loan,index,th}){
+  const [showGraph,setShowGraph]=useState(false);
+  const [showSchedule,setShowSchedule]=useState(false);
+  const outstanding=+loan.outstanding||0,emi=+loan.emi||0,rate=+loan.rate||0,mr=rate/100/12;
+  let months=0;
+  if(mr>0&&emi>outstanding*mr) months=Math.ceil(-Math.log(1-outstanding*mr/emi)/Math.log(1+mr));
+  else if(mr===0&&emi>0) months=Math.ceil(outstanding/emi);
+  else if(mr>0&&emi>0&&emi<=outstanding*mr) months=Infinity;
+  const isInfinite=!isFinite(months);
+  const totalPayable=isInfinite?0:emi*months;
+  const totalInterest=isInfinite?0:Math.max(0,totalPayable-outstanding);
+  const monthlyInterest=Math.round(outstanding*mr);
+
+  // Extra payment scenarios
+  const extra20=emi*1.2;
+  let mFaster20=0;
+  if(mr>0&&extra20>outstanding*mr) mFaster20=Math.ceil(-Math.log(1-outstanding*mr/extra20)/Math.log(1+mr));
+  else if(mr===0) mFaster20=Math.ceil(outstanding/extra20);
+  const intSaved20=Math.max(0,totalInterest-Math.max(0,extra20*mFaster20-outstanding));
+
+  const extra50=emi*1.5;
+  let mFaster50=0;
+  if(mr>0&&extra50>outstanding*mr) mFaster50=Math.ceil(-Math.log(1-outstanding*mr/extra50)/Math.log(1+mr));
+  else if(mr===0) mFaster50=Math.ceil(outstanding/extra50);
+  const intSaved50=Math.max(0,totalInterest-Math.max(0,extra50*mFaster50-outstanding));
+
+  const done=new Date(); if(!isInfinite) done.setMonth(done.getMonth()+months);
+
+  const schedule=useMemo(()=>{
+    if(isInfinite||months===0) return [];
+    const rows=[]; let bal=outstanding;
+    const n=Math.min(months,360);
+    const d=new Date();
+    for(let m=1;m<=n;m++){
+      const interest=bal*mr;
+      const principal=Math.min(emi-interest,bal);
+      bal=Math.max(0,bal-principal);
+      const dt=new Date(d.getFullYear(),d.getMonth()+m,1);
+      rows.push({month:m,label:`${dt.toLocaleString("default",{month:"short",year:"numeric"})}`,interest:Math.round(interest),principal:Math.round(principal),balance:Math.round(bal),emi:Math.round(emi)});
+      if(bal<=0) break;
+    }
+    return rows;
+  },[outstanding,mr,emi,months,isInfinite]);
+
+  const graphPts=useMemo(()=>{
+    if(schedule.length===0) return [];
+    const step=Math.max(1,Math.floor(schedule.length/12));
+    return schedule.filter((_,i)=>i%step===0||i===schedule.length-1);
+  },[schedule]);
+
+  const GW=320,GH=100,PAD=30;
+
+  return (
+    <Sec title={`🏛️ ${loan.name||`Loan ${index+1}`}${loan.type?` — ${loan.type}`:""}`} th={th}>
+      {isInfinite&&(
+        <div style={{background:th.isDark?"rgba(220,38,38,0.15)":"#fff1f2",border:`1.5px solid ${th.danger}`,borderRadius:12,padding:"10px 12px",marginBottom:10,fontSize:12,color:th.danger,fontWeight:600}}>
+          ⚠️ EMI (₹{emi.toLocaleString("en-IN")}) doesn't cover monthly interest (₹{monthlyInterest.toLocaleString("en-IN")}). Increase your EMI above ₹{(monthlyInterest+1).toLocaleString("en-IN")}.
+        </div>
+      )}
+      {/* Key Numbers */}
+      <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:8,marginBottom:10}}>
+        {[
+          {l:"Outstanding",v:fmtFull(outstanding),c:th.danger},
+          {l:"Rate (p.a.)",v:`${rate}%`,c:th.text},
+          {l:"Monthly EMI",v:fmtFull(emi),c:th.text},
+          {l:"Monthly Interest",v:fmtFull(monthlyInterest),c:"#f97316"},
+          {l:"Monthly Principal",v:isInfinite?"—":fmtFull(Math.round(emi-monthlyInterest)),c:th.success},
+          {l:"Payoff In",v:isInfinite?"∞":`${months} months`,c:isInfinite?th.danger:th.text},
+          {l:"Payoff By",v:isInfinite?"Never":done.toLocaleDateString("en-IN",{month:"short",year:"numeric"}),c:isInfinite?th.danger:th.success},
+          {l:"Total Payable",v:isInfinite?"∞":fmtFull(totalPayable),c:th.text},
+        ].map(({l,v,c})=>(
+          <div key={l} style={{background:th.isDark?"rgba(255,255,255,0.04)":th.bg,borderRadius:8,padding:"8px 10px",border:`1px solid ${th.border}`}}>
+            <div style={{fontSize:9,color:th.textMuted,textTransform:"uppercase",letterSpacing:.5,marginBottom:2}}>{l}</div>
+            <div style={{fontSize:12,fontWeight:700,color:c,fontFamily:th.serif}}>{v}</div>
+          </div>
+        ))}
+      </div>
+      {/* Calculation breakdown */}
+      {!isInfinite&&(
+        <div style={{background:th.isDark?"rgba(255,255,255,0.03)":th.bg,borderRadius:10,padding:12,border:`1px solid ${th.border}`,marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:th.isDark?"#c490a8":th.accentL,marginBottom:8,fontFamily:th.serif}}>📐 How These Are Calculated</div>
+          <div style={{fontSize:10,color:th.textMuted,lineHeight:1.8}}>
+            <div>• Monthly Interest = Outstanding (₹{outstanding.toLocaleString("en-IN")}) × Rate ({rate}%) ÷ 12 = <b style={{color:"#f97316"}}>{fmtFull(monthlyInterest)}</b></div>
+            <div>• Monthly Principal Paid = EMI (₹{emi.toLocaleString("en-IN")}) − Monthly Interest (₹{monthlyInterest.toLocaleString("en-IN")}) = <b style={{color:th.success}}>{fmtFull(Math.round(emi-monthlyInterest))}</b></div>
+            <div>• Payoff Months = −ln(1 − Outstanding × MonthlyRate ÷ EMI) ÷ ln(1 + MonthlyRate) = <b style={{color:th.text}}>{months} months</b></div>
+            <div>• Total Payable = EMI × Months = {fmtFull(emi)} × {months} = <b style={{color:th.text}}>{fmtFull(totalPayable)}</b></div>
+            <div>• Total Interest = Total Payable − Outstanding = {fmtFull(totalPayable)} − {fmtFull(outstanding)} = <b style={{color:th.danger}}>{fmtFull(totalInterest)}</b></div>
+          </div>
+        </div>
+      )}
+      {/* Balance milestones */}
+      {months>0&&(
+        <div style={{marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:th.isDark?"#c490a8":th.accentL,marginBottom:6,fontFamily:th.serif}}>📅 Balance Milestones</div>
+          {[3,6,12,24,36].filter(m=>m<months).map(m=>{
+            const nwBal=outstanding*Math.pow(1+mr,m)-emi*((Math.pow(1+mr,m)-1)/mr);
+            const pctPaid=((outstanding-Math.max(0,nwBal))/outstanding*100);
+            return (
+              <div key={m} style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"5px 0",borderBottom:`1px solid ${th.border}`}}>
+                <span style={{fontSize:10,color:th.text}}>After {m} month{m>1?"s":""}</span>
+                <span style={{fontSize:10,color:th.success}}>{pctPaid.toFixed(1)}% paid</span>
+                <span style={{fontSize:11,color:th.danger,fontWeight:600,fontFamily:th.serif}}>{fmtFull(Math.max(0,nwBal))} left</span>
+              </div>
+            );
+          })}
+        </div>
+      )}
+      {/* Extra payment scenarios */}
+      {!isInfinite&&(
+        <div style={{background:th.isDark?"rgba(16,185,129,0.08)":"#f0fdf4",borderRadius:12,padding:12,border:`1px solid ${th.isDark?"#064e3b":"#bbf7d0"}`,marginBottom:10}}>
+          <div style={{fontSize:11,fontWeight:700,color:th.success,marginBottom:8,fontFamily:th.serif}}>💡 Extra Payment Strategies</div>
+          {[{label:"Pay 20% Extra",amount:extra20,faster:months-mFaster20,saved:intSaved20},{label:"Pay 50% Extra",amount:extra50,faster:months-mFaster50,saved:intSaved50}].map(({label,amount,faster,saved})=>(
+            <div key={label} style={{background:th.isDark?"rgba(255,255,255,0.05)":th.bg,borderRadius:8,padding:"8px 10px",marginBottom:6,border:`1px solid ${th.isDark?"#064e3b":"#bbf7d0"}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:th.success,marginBottom:2}}>{label} → EMI: {fmtFull(amount)}/mo</div>
+              <div style={{fontSize:10,color:th.textMuted}}>⚡ {faster>0?`${faster} months faster (done in ${mFaster20||mFaster50} months)`:"Not enough data"}</div>
+              <div style={{fontSize:10,color:th.textMuted}}>💰 Interest saved: <b style={{color:th.success}}>{fmtFull(saved)}</b></div>
+            </div>
+          ))}
+          <div style={{fontSize:10,color:th.textMuted,marginTop:4,fontStyle:"italic"}}>* Any amount freed after loan payoff can be redirected to investments 📈</div>
+        </div>
+      )}
+      {/* Graph */}
+      {!isInfinite&&graphPts.length>1&&(
+        <>
+          <button onClick={()=>setShowGraph(o=>!o)} style={{width:"100%",background:"none",border:`1px dashed ${th.border}`,borderRadius:10,padding:"8px",cursor:"pointer",fontSize:11,fontWeight:700,color:th.isDark?"#c490a8":th.accentL,fontFamily:th.font,marginBottom:4}}>
+            {showGraph?"▲ Hide Graph":"📉 Show Repayment Graph"}
+          </button>
+          {showGraph&&(
+            <div className="fi" style={{marginBottom:10}}>
+              <div style={{fontSize:10,color:th.textMuted,marginBottom:6,fontFamily:th.serif}}>OUTSTANDING BALANCE OVER TIME</div>
+              <svg width="100%" viewBox={`0 0 ${GW} ${GH+20}`} style={{overflow:"visible"}}>
+                {[0,0.25,0.5,0.75,1].map(p=>(
+                  <g key={p}>
+                    <line x1={PAD} y1={GH*(1-p)} x2={GW-10} y2={GH*(1-p)} stroke={th.isDark?"#2a1a28":"#fce7f3"} strokeWidth="1"/>
+                    <text x={PAD-2} y={GH*(1-p)+3} textAnchor="end" fontSize="7" fill={th.textMuted}>{fmt(outstanding*p)}</text>
+                  </g>
+                ))}
+                <polygon points={[...graphPts.map((p,i)=>{const x=PAD+(i/(graphPts.length-1))*(GW-PAD-10);const y=GH*(p.balance/outstanding);return`${x},${y}`;}),`${GW-10},${GH}`,`${PAD},${GH}`].join(" ")} fill={`${th.danger}15`}/>
+                <polyline points={graphPts.map((p,i)=>{const x=PAD+(i/(graphPts.length-1))*(GW-PAD-10);const y=GH*(p.balance/outstanding);return`${x},${y}`;}).join(" ")} fill="none" stroke={th.isDark?"#e91e8c":th.accentL} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
+                {graphPts.filter((_,i)=>i%(Math.ceil(graphPts.length/4))===0||i===graphPts.length-1).map((p,i)=>{
+                  const idx=graphPts.indexOf(p);
+                  const x=PAD+(idx/(graphPts.length-1))*(GW-PAD-10);
+                  return <text key={i} x={x} y={GH+14} textAnchor="middle" fontSize="7" fill={th.textMuted}>{p.label}</text>;
+                })}
+              </svg>
+              {/* Principal vs Interest bars */}
+              {schedule.length>0&&(
+                <>
+                  <div style={{marginTop:12,fontSize:10,color:th.textMuted,marginBottom:6,fontFamily:th.serif}}>PRINCIPAL vs INTEREST — FIRST 12 MONTHS</div>
+                  <div style={{display:"flex",alignItems:"flex-end",gap:3,height:60}}>
+                    {schedule.slice(0,12).map((row,i)=>{
+                      const total2=row.principal+row.interest||1;
+                      return (
+                        <div key={i} style={{flex:1,display:"flex",flexDirection:"column",height:"100%",justifyContent:"flex-end",gap:1}}>
+                          <div style={{height:`${row.interest/total2*100}%`,background:"#f97316",borderRadius:"2px 2px 0 0",minHeight:row.interest>0?2:0}}/>
+                          <div style={{height:`${row.principal/total2*100}%`,background:th.success,borderRadius:"0",minHeight:row.principal>0?2:0}}/>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div style={{display:"flex",gap:16,marginTop:6,justifyContent:"center"}}>
+                    <div style={{display:"flex",alignItems:"center",gap:4,fontSize:9,color:th.textMuted}}>
+                      <div style={{width:8,height:8,borderRadius:2,background:th.success}}/>Principal
+                    </div>
+                    <div style={{display:"flex",alignItems:"center",gap:4,fontSize:9,color:th.textMuted}}>
+                      <div style={{width:8,height:8,borderRadius:2,background:"#f97316"}}/>Interest
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          )}
+        </>
+      )}
+      {/* Repayment Schedule */}
+      {!isInfinite&&schedule.length>0&&(
+        <>
+          <button onClick={()=>setShowSchedule(o=>!o)} style={{width:"100%",background:"none",border:`1px dashed ${th.border}`,borderRadius:10,padding:"8px",cursor:"pointer",fontSize:11,fontWeight:700,color:th.isDark?"#c490a8":th.accentL,fontFamily:th.font}}>
+            {showSchedule?"▲ Hide Schedule":"📅 Show Repayment Schedule"}
+          </button>
+          {showSchedule&&(
+            <div className="fi" style={{maxHeight:280,overflowY:"auto",marginTop:8}}>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:10,fontFamily:th.font}}>
+                <thead>
+                  <tr style={{background:th.isDark?"rgba(255,255,255,0.05)":th.bg}}>
+                    {["Month","EMI","Principal","Interest","Balance"].map(h=>(
+                      <td key={h} style={{padding:"6px 4px",fontSize:9,color:th.textMuted,fontWeight:700}}>{h}</td>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {schedule.slice(0,48).map((row,i)=>(
+                    <tr key={i} style={{borderBottom:`1px solid ${th.border}`}}>
+                      <td style={{padding:"5px 4px",color:th.textMuted,fontSize:9}}>{row.label}</td>
+                      <td style={{padding:"5px 4px",color:th.text}}>{fmt(row.emi)}</td>
+                      <td style={{padding:"5px 4px",color:th.success}}>{fmt(row.principal)}</td>
+                      <td style={{padding:"5px 4px",color:"#f97316"}}>{fmt(row.interest)}</td>
+                      <td style={{padding:"5px 4px",color:row.balance===0?th.success:th.danger,fontWeight:row.balance===0?700:400}}>{row.balance===0?"Paid ✓":fmt(row.balance)}</td>
+                    </tr>
+                  ))}
+                  {schedule.length>48&&<tr><td colSpan={5} style={{padding:"6px 4px",color:th.textMuted,fontSize:9,textAlign:"center"}}>... {schedule.length-48} more months</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </>
+      )}
+    </Sec>
   );
 }
 
@@ -1967,12 +2300,14 @@ function AISuggestions({data,summary,targetAmt,targetYr,growth,extra,th}){
 
 // ── PROJECTION TAB ────────────────────────────────────────────────────────────
 function ProjectionTab({data,summary,th}){
-  const [targetAmt,setTargetAmt]=useState(5000000);
-  const [targetYr,setTargetYr]=useState(2030);
-  const [growth,setGrowth]=useState(10);
+  const [targetAmt,setTargetAmt]=useState(0);
+  const [targetYr,setTargetYr]=useState(new Date().getFullYear()+5);
+  const [growth,setGrowth]=useState(0);
   const [extra,setExtra]=useState(0);
   const now=new Date(); const ny=now.getFullYear(),nm=now.getMonth();
+  const hasTarget=targetAmt>0&&targetYr>ny&&growth>0;
   const months=useMemo(()=>{
+    if(!hasTarget) return [];
     const rows=[]; let nw=summary.netWorth;
     const mg=(1+growth/100)**(1/12)-1;
     const total=(targetYr-ny)*12+(11-nm);
@@ -1982,16 +2317,25 @@ function ProjectionTab({data,summary,th}){
       nw=nw*(1+mg)+(+extra||0);
     }
     return rows;
-  },[summary.netWorth,growth,extra,targetYr]);
-  const finalNW=months[months.length-1]?.nw||0;
-  const onTrack=finalNW>=targetAmt;
-  const gap=targetAmt-finalNW;
+  },[summary.netWorth,growth,extra,targetYr,hasTarget]);
+  const finalNW=months[months.length-1]?.nw||summary.netWorth;
+  const onTrack=hasTarget&&finalNW>=targetAmt;
+  const gap=targetAmt>0?targetAmt-finalNW:0;
+  const yearsLeft=targetYr-ny;
+  const monthsLeft=yearsLeft*12-nm;
   const needed=useMemo(()=>{
-    const total=(targetYr-ny)*12+(11-nm);
+    if(!hasTarget||monthsLeft<=0) return 0;
     const mg=(1+growth/100)**(1/12)-1;
-    const rn=(1+mg)**total;
+    const rn=(1+mg)**monthsLeft;
     return Math.max(0,Math.round((targetAmt-summary.netWorth*rn)*mg/(rn-1)));
-  },[summary.netWorth,targetAmt,targetYr,growth]);
+  },[summary.netWorth,targetAmt,targetYr,growth,hasTarget,monthsLeft]);
+
+  // How much loan payoff frees up
+  const loanFreeup=summary.monthlyEMI; // after paying off loans, this becomes savings
+  const savingsGap=Math.max(0,needed-(+extra||0));
+  const fromLoans=Math.min(loanFreeup,savingsGap);
+  const stillNeeded=Math.max(0,savingsGap-fromLoans);
+
   const LineChart=()=>{
     const pts=months.filter((_,i)=>i%3===0||i===months.length-1);
     if(pts.length<2) return null;
@@ -2016,72 +2360,135 @@ function ProjectionTab({data,summary,th}){
   if(isP) return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <PCard title="Wealth Goal" th={th}>
-        <PField label="TARGET NET WORTH (₹)" type="number" value={targetAmt} onChange={v=>setTargetAmt(+v)} placeholder="₹ 5,000,000" th={th}/>
-        <PField label="TARGET YEAR" type="number" value={targetYr} onChange={v=>setTargetYr(+v)} placeholder="2030" th={th}/>
-        <PField label="EXPECTED GROWTH (% p.a.)" type="number" value={growth} onChange={v=>setGrowth(+v)} placeholder="10" th={th}/>
-        <PField label="EXTRA MONTHLY SAVINGS (₹)" type="number" value={extra} onChange={v=>setExtra(+v)} placeholder="₹ 0" th={th}/>
+        <PField label="TARGET NET WORTH (₹)" type="number" value={targetAmt||""} onChange={v=>setTargetAmt(+v)} placeholder="Enter your target amount" th={th}/>
+        <PField label="TARGET YEAR" type="number" value={targetYr} onChange={v=>setTargetYr(+v)} placeholder={`e.g. ${ny+5}`} th={th}/>
+        <PField label="EXPECTED GROWTH (% p.a.)" type="number" value={growth||""} onChange={v=>setGrowth(+v)} placeholder="e.g. 10" th={th}/>
+        <PField label="EXTRA MONTHLY SAVINGS (₹)" type="number" value={extra||""} onChange={v=>setExtra(+v)} placeholder="Additional savings per month" th={th}/>
+        {!hasTarget&&<div style={{fontSize:11,color:th.textMuted,textAlign:"center",padding:"8px 0"}}>Enter target amount, year, and growth rate to see projections</div>}
       </PCard>
-      <div className="pcard" style={{background:th.cardBg,border:`2px solid ${onTrack?th.success:th.danger}`,borderRadius:18,padding:16,textAlign:"center"}}>
-        <div style={{fontSize:24,marginBottom:4}}>{onTrack?"◆":"→"}</div>
-        <div style={{fontSize:16,fontWeight:700,color:onTrack?th.success:th.danger,marginBottom:4,fontFamily:"'DM Mono',monospace"}}>{onTrack?`On Track — ${fmtFull(finalNW)}`:`Gap: ${fmtFull(Math.abs(gap))}`}</div>
-        <div style={{fontSize:12,color:th.textMuted}}>{onTrack?`You'll hit ${fmtFull(targetAmt)} by ${targetYr}`:`Need ₹${needed.toLocaleString("en-IN")}/month more`}</div>
-      </div>
-      <PCard title="Net Worth Projection" th={th}>
-        <LineChart/>
-        <div style={{marginTop:8}}>
-          {months.filter((_,i)=>i%6===0||i===months.length-1).map((m,i)=>{
-            const pct=Math.min(100,m.nw/targetAmt*100);
-            return (
-              <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                <span style={{fontSize:10,color:th.text,minWidth:65,fontFamily:"'DM Mono',monospace"}}>{m.label}</span>
-                <div style={{flex:1,height:7,background:th.isDark?"rgba(255,255,255,0.1)":th.bg,borderRadius:3,overflow:"hidden"}}>
-                  <div style={{width:`${pct}%`,height:"100%",background:m.nw>=targetAmt?th.success:th.accentL,borderRadius:3}}/>
-                </div>
-                <span style={{fontSize:11,fontWeight:600,color:m.nw>=targetAmt?th.success:th.text,minWidth:65,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(m.nw)}</span>
-              </div>
-            );
-          })}
+      {hasTarget&&(
+        <>
+        <div className="pcard" style={{background:th.cardBg,border:`2px solid ${onTrack?th.success:th.danger}`,borderRadius:18,padding:16,textAlign:"center"}}>
+          <div style={{fontSize:24,marginBottom:4}}>{onTrack?"◆":"→"}</div>
+          <div style={{fontSize:16,fontWeight:700,color:onTrack?th.success:th.danger,marginBottom:4,fontFamily:"'DM Mono',monospace"}}>{onTrack?`On Track — ${fmtFull(finalNW)}`:`Gap: ${fmtFull(Math.abs(gap))}`}</div>
+          <div style={{fontSize:12,color:th.textMuted}}>{onTrack?`You'll hit ${fmtFull(targetAmt)} by ${targetYr}`:`Need ₹${needed.toLocaleString("en-IN")}/month more`}</div>
         </div>
-      </PCard>
-      <PCard title="AI Suggestions" th={th}>
-        <AISuggestions data={data} summary={summary} targetAmt={targetAmt} targetYr={targetYr} growth={growth} extra={extra} th={th}/>
-      </PCard>
+        <PCard title="Net Worth Projection" th={th}>
+          <LineChart/>
+          <div style={{marginTop:8}}>
+            {months.filter((_,i)=>i%6===0||i===months.length-1).map((m,i)=>{
+              const pct=Math.min(100,m.nw/targetAmt*100);
+              return (
+                <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <span style={{fontSize:10,color:th.text,minWidth:65,fontFamily:"'DM Mono',monospace"}}>{m.label}</span>
+                  <div style={{flex:1,height:7,background:th.isDark?"rgba(255,255,255,0.1)":th.bg,borderRadius:3,overflow:"hidden"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:m.nw>=targetAmt?th.success:th.accentL,borderRadius:3}}/>
+                  </div>
+                  <span style={{fontSize:11,fontWeight:600,color:m.nw>=targetAmt?th.success:th.text,minWidth:65,textAlign:"right",fontFamily:"'DM Mono',monospace"}}>{fmt(m.nw)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </PCard>
+        {/* Detailed plan */}
+        <PCard title="📐 How To Reach Your Goal" th={th}>
+          <div style={{fontSize:12,color:th.text,marginBottom:12,lineHeight:1.7}}>
+            <div style={{marginBottom:6,fontWeight:700,fontFamily:"'DM Mono',monospace",color:th.success}}>Current Situation:</div>
+            <div>• Current Net Worth: <b>{fmtFull(summary.netWorth)}</b></div>
+            <div>• Target: <b>{fmtFull(targetAmt)}</b> by <b>{targetYr}</b> ({yearsLeft} years left)</div>
+            <div>• Gap to fill: <b style={{color:th.danger}}>{fmtFull(Math.max(0,targetAmt-summary.netWorth))}</b></div>
+            <div>• Growth assumed: <b>{growth}% p.a.</b></div>
+          </div>
+          {!onTrack&&(
+            <div style={{background:th.isDark?"rgba(255,255,255,0.04)":"#f8f8f8",borderRadius:10,padding:10,marginBottom:10,border:`1px solid ${th.border}`}}>
+              <div style={{fontSize:11,fontWeight:700,color:th.danger,marginBottom:6}}>💸 Additional Monthly Savings Needed: {fmtFull(needed)}/month</div>
+              <div style={{fontSize:10,color:th.textMuted,lineHeight:1.7}}>
+                <div>• From redirecting EMI payments (after loan payoff): <b style={{color:th.success}}>{fmtFull(fromLoans)}/month</b></div>
+                <div>• Still needed from new savings: <b style={{color:th.danger}}>{fmtFull(stillNeeded)}/month</b></div>
+                {fromLoans>0&&<div style={{marginTop:4,fontSize:9,color:th.textMuted}}>Tip: Pay off loans early → redirect ₹{loanFreeup.toLocaleString("en-IN")}/mo EMI to investments</div>}
+              </div>
+            </div>
+          )}
+          <div style={{fontSize:10,color:th.textMuted,lineHeight:1.7}}>
+            <div style={{fontWeight:700,color:th.success,marginBottom:4}}>Suggested Action Plan:</div>
+            {needed>0&&<div>1️⃣ Increase SIPs/investments by <b>{fmtFull(stillNeeded)}/month</b> — at {growth}% returns, this grows significantly</div>}
+            {loanFreeup>0&&<div>2️⃣ After paying off loans, redirect your <b>{fmtFull(loanFreeup)}/month</b> EMI into mutual funds</div>}
+            <div>3️⃣ Review and boost growth rate via equity investments (target 12-15% p.a.)</div>
+            <div>4️⃣ Avoid lifestyle inflation — every saved rupee compounds powerfully</div>
+          </div>
+        </PCard>
+        <PCard title="AI Suggestions" th={th}>
+          <AISuggestions data={data} summary={summary} targetAmt={targetAmt} targetYr={targetYr} growth={growth} extra={extra} th={th}/>
+        </PCard>
+        </>
+      )}
     </div>
   );
   return (
     <div style={{display:"flex",flexDirection:"column",gap:12}}>
       <QStrip q="She who plans today, rules tomorrow. 💅" th={th}/>
       <Sec title="🎯 Set Your Wealth Goal" th={th}>
-        <F label="Target Net Worth (₹)" type="number" value={targetAmt} onChange={v=>setTargetAmt(+v)} placeholder="e.g. 5000000" th={th}/>
-        <F label="Target Year" type="number" value={targetYr} onChange={v=>setTargetYr(+v)} placeholder="e.g. 2030" th={th}/>
-        <F label="Expected Annual Growth (%)" type="number" value={growth} onChange={v=>setGrowth(+v)} placeholder="e.g. 10" th={th}/>
-        <F label="Additional Monthly Savings (₹)" type="number" value={extra} onChange={v=>setExtra(+v)} placeholder="Extra savings per month" th={th}/>
+        <F label="Target Net Worth (₹)" type="number" value={targetAmt||""} onChange={v=>setTargetAmt(+v)} placeholder="Enter your target amount" th={th}/>
+        <F label="Target Year" type="number" value={targetYr} onChange={v=>setTargetYr(+v)} placeholder={`e.g. ${ny+5}`} th={th}/>
+        <F label="Expected Annual Growth (%)" type="number" value={growth||""} onChange={v=>setGrowth(+v)} placeholder="e.g. 10" th={th}/>
+        <F label="Additional Monthly Savings (₹)" type="number" value={extra||""} onChange={v=>setExtra(+v)} placeholder="Extra savings per month" th={th}/>
+        {!hasTarget&&<div style={{fontSize:11,color:th.textMuted,textAlign:"center",padding:"8px 0",fontStyle:"italic"}}>Enter target amount, year, and growth rate to see projections 💐</div>}
       </Sec>
-      <div style={{background:th.isDark&&th.isVaishali?"#2a1020":th.cardBg,border:`2px solid ${onTrack?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL)}`,borderRadius:16,padding:16,textAlign:"center"}}>
-        <div style={{fontSize:24}}>{onTrack?"💅":"🌷"}</div>
-        <div style={{fontFamily:th.serif,fontSize:16,fontWeight:700,color:onTrack?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL),marginBottom:4}}>{onTrack?`On Track! Projected ${fmtFull(finalNW)}`:`Gap: ${fmtFull(Math.abs(gap))}`}</div>
-        <div style={{fontSize:12,color:th.text}}>{onTrack?`You'll hit ${fmtFull(targetAmt)} by ${targetYr}`:`Save ₹${needed.toLocaleString("en-IN")}/month more`}</div>
-      </div>
-      <Sec title="📈 Net Worth Projection" th={th}>
-        <LineChart/>
-        <div style={{marginTop:8}}>
-          {months.filter((_,i)=>i%6===0||i===months.length-1).map((m,i)=>{
-            const pct=Math.min(100,m.nw/targetAmt*100);
-            return (
-              <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
-                <span style={{fontSize:10,color:th.text,minWidth:65}}>{m.label}</span>
-                <div style={{flex:1,height:7,background:th.isDark?"rgba(255,255,255,0.1)":th.bg,borderRadius:3,overflow:"hidden"}}>
-                  <div style={{width:`${pct}%`,height:"100%",background:m.nw>=targetAmt?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL),borderRadius:3}}/>
-                </div>
-                <span style={{fontSize:11,fontWeight:600,color:m.nw>=targetAmt?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL),minWidth:65,textAlign:"right"}}>{fmt(m.nw)}</span>
-              </div>
-            );
-          })}
+      {hasTarget&&(
+        <>
+        <div style={{background:th.isDark&&th.isVaishali?"#2a1020":th.cardBg,border:`2px solid ${onTrack?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL)}`,borderRadius:16,padding:16,textAlign:"center"}}>
+          <div style={{fontSize:24}}>{onTrack?"💅":"🌷"}</div>
+          <div style={{fontFamily:th.serif,fontSize:16,fontWeight:700,color:onTrack?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL),marginBottom:4}}>{onTrack?`On Track! Projected ${fmtFull(finalNW)}`:`Gap: ${fmtFull(Math.abs(gap))}`}</div>
+          <div style={{fontSize:12,color:th.text}}>{onTrack?`You'll hit ${fmtFull(targetAmt)} by ${targetYr}`:`Save ₹${needed.toLocaleString("en-IN")}/month more`}</div>
         </div>
-      </Sec>
-      <Sec title="✨ Personalised Wealth Advice" th={th}>
-        <AISuggestions data={data} summary={summary} targetAmt={targetAmt} targetYr={targetYr} growth={growth} extra={extra} th={th}/>
-      </Sec>
+        <Sec title="📈 Net Worth Projection" th={th}>
+          <LineChart/>
+          <div style={{marginTop:8}}>
+            {months.filter((_,i)=>i%6===0||i===months.length-1).map((m,i)=>{
+              const pct=Math.min(100,m.nw/targetAmt*100);
+              return (
+                <div key={i} style={{display:"flex",alignItems:"center",gap:6,marginBottom:6}}>
+                  <span style={{fontSize:10,color:th.text,minWidth:65}}>{m.label}</span>
+                  <div style={{flex:1,height:7,background:th.isDark?"rgba(255,255,255,0.1)":th.bg,borderRadius:3,overflow:"hidden"}}>
+                    <div style={{width:`${pct}%`,height:"100%",background:m.nw>=targetAmt?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL),borderRadius:3}}/>
+                  </div>
+                  <span style={{fontSize:11,fontWeight:600,color:m.nw>=targetAmt?th.success:(th.isDark&&th.isVaishali?"#e91e8c":th.accentL),minWidth:65,textAlign:"right"}}>{fmt(m.nw)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </Sec>
+        {/* Detailed plan for Vaishali */}
+        <Sec title="📐 How to Reach Your Target" th={th}>
+          <div style={{fontSize:11,color:th.text,lineHeight:1.8}}>
+            <div style={{marginBottom:8}}>
+              <div style={{fontWeight:700,color:th.isDark?"#c490a8":th.accentL,fontFamily:th.serif,marginBottom:4}}>📊 Your Current Situation:</div>
+              <div>• Net Worth today: <b style={{color:th.isDark?"#e91e8c":th.accent}}>{fmtFull(summary.netWorth)}</b></div>
+              <div>• Target: <b>{fmtFull(targetAmt)}</b> by <b>{targetYr}</b> ({yearsLeft} years from now)</div>
+              <div>• Gap to fill: <b style={{color:th.danger}}>{fmtFull(Math.max(0,targetAmt-summary.netWorth))}</b></div>
+              <div>• At {growth}% annual growth, your money already grows by <b>{fmtFull(Math.round(summary.netWorth*growth/100))}</b>/year</div>
+            </div>
+            {!onTrack&&(
+              <div style={{background:th.isDark?"rgba(220,38,38,0.1)":"#fff1f2",borderRadius:10,padding:10,marginBottom:8,border:`1px solid ${th.danger}33`}}>
+                <div style={{fontWeight:700,color:th.danger,marginBottom:4}}>💸 Extra monthly savings needed: {fmtFull(needed)}/month</div>
+                <div>• Your current EMI burden: <b style={{color:"#f97316"}}>{fmtFull(summary.monthlyEMI)}/month</b></div>
+                {fromLoans>0&&<div>• After loan payoffs, redirect EMI as investment: <b style={{color:th.success}}>{fmtFull(fromLoans)}/month</b></div>}
+                {stillNeeded>0&&<div>• Net new savings still needed: <b style={{color:th.danger}}>{fmtFull(stillNeeded)}/month</b></div>}
+              </div>
+            )}
+            <div style={{fontWeight:700,color:th.isDark?"#c490a8":th.accentL,fontFamily:th.serif,marginBottom:4}}>✨ Your Action Plan:</div>
+            {needed>0&&<div>1️⃣ Start a SIP of <b>{fmtFull(Math.max(stillNeeded,1000))}/month</b> in an equity mutual fund targeting 12-15% p.a.</div>}
+            {loanFreeup>0&&<div>2️⃣ After clearing loans, redirect <b>{fmtFull(loanFreeup)}</b>/month EMI savings into investments</div>}
+            <div>3️⃣ Increase income — a salary hike of even {fmtFull(needed)} more/month changes everything</div>
+            <div>4️⃣ Avoid lifestyle inflation — stay disciplined with each salary increment</div>
+            <div>5️⃣ Review your portfolio every 6 months to stay on track</div>
+          </div>
+        </Sec>
+        <Sec title="✨ Personalised Wealth Advice" th={th}>
+          <AISuggestions data={data} summary={summary} targetAmt={targetAmt} targetYr={targetYr} growth={growth} extra={extra} th={th}/>
+        </Sec>
+        </>
+      )}
     </div>
   );
 }
@@ -2100,11 +2507,13 @@ function SnapshotTab({data,summary,th}){
     [" Real Estate",fmtFull(summary.reTotal),"#f97316",false],
     [" Provident Fund",fmtFull(summary.pfTotal),"#10b981",false],
     ...(!th.isVaishali&&(summary.advanceTotal||0)>0?[[" Advances Given",fmtFull(summary.advanceTotal||0),"#f59e0b",false]]:[]),
+    ...(th.isVaishali&&(summary.debtorTotal||0)>0?[[" Debtors (Receivable)",fmtFull(summary.debtorTotal||0),"#06b6d4",false]]:[]),
     ["—"],
     ["Gross Liabilities",fmtFull(summary.totalLiabilities),th.danger,true],
     [" Loans",fmtFull(summary.loanTotal),"#ef4444",false],
     [" Credit Cards",fmtFull(summary.ccTotal),"#f87171",false],
     [" LazyPay",fmtFull(summary.lazyPayTotal||0),"#fb923c",false],
+    ...(th.isVaishali&&(summary.creditorTotal||0)>0?[[" Creditors (Payable)",fmtFull(summary.creditorTotal||0),"#ef4444",false]]:[]),
     ["—"],
     ["NET WORTH",fmtFull(summary.netWorth),summary.netWorth>=0?th.accent:th.danger,true],
     ["—"],
